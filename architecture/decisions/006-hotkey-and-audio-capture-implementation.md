@@ -26,6 +26,8 @@ Manual config (no automation)
 Unix socket at `$XDG_RUNTIME_DIR/whisper-input.sock`
 Protocol: `START`/`STOP`, responds `ACK`/`ERROR: msg`
 
+If socket absent: return `ERROR: daemon not running`; do not auto-start the daemon
+
 PID file at `$XDG_RUNTIME_DIR/whisper-input.pid`
 Startup checks PID, cleans stale socket, auto-recovers from crashes
 
@@ -35,7 +37,7 @@ systemd/launchd service (manual setup), auto-restart, starts on login
 ### Audio Process
 Fresh subprocess per recording (pw-record/parecord/sox)
 Writes `~/.local/state/whisper-input/recordings/recording-{timestamp}.wav`
-SIGTERM on stop, passes file to Whisper
+On stop: send SIGINT to recorder; if not exited within 300ms, send SIGTERM. Then pass file to Whisper
 
 ### Duration Limits
 Max: 60s (kill, notify, wait for release, transcribe)
@@ -46,6 +48,9 @@ Min: 0.5s (discard, acts as cancel)
 - Transcription: silent if <3s, "Transcribing..." if ≥3s
 - Errors: immediate notification (ADR-004)
 - Concurrent: "Transcription in progress" notification
+
+### Text Injection Policy
+Keystroke simulation only (ydotool/cliclick); no clipboard-based fallback
 
 ### Validation
 Startup checks mic device exists (ADR-004)

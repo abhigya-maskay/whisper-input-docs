@@ -267,7 +267,7 @@ DEBUG: full Haskell traces, subprocess stderr, env details
 
 **Linux dependency checks:**
 - `faster-whisper` Python module available (`python -c "import faster_whisper"`)
-- Custom Python wrapper script exists (`./scripts/whisper-transcribe.py`)
+- Custom Python wrapper script exists (`/usr/local/lib/whisper-input/whisper-transcribe.py`)
 - `pw-record` or `parecord` in PATH
 - `ydotoold` service running (check via `systemctl --user is-active`)
 

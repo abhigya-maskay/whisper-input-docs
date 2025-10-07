@@ -24,7 +24,7 @@ Note: Hotkeys configured externally (Hyprland/skhd, see ADR-006)
 { linux =
     { audio = { microphone_device = "default" }
     , whisper =
-        { model = "medium"
+        { model = "medium.en"
         , model_path = None Text  -- Optional: override model file path
         , gpu_device = 0  -- CUDA device number
         }
@@ -33,7 +33,7 @@ Note: Hotkeys configured externally (Hyprland/skhd, see ADR-006)
 , macos =
     { audio = { microphone_device = "default" }
     , whisper =
-        { model = "medium"
+        { model = "medium.en"
         , model_path = None Text  -- Optional: override model file path
         , use_gpu = True  -- Enable Metal/ANE acceleration
         }
@@ -333,7 +333,7 @@ User sends signal or CLI command to trigger reload.
 { linux =
     { audio = { microphone_device = "default" }
     , whisper =
-        { model = "medium"           -- Options: tiny, base, small, medium, large, large-v3
+        { model = "medium.en"        -- Options: tiny, base, small, medium, large, large-v3
         , model_path = None Text     -- Optional: custom model path
         , gpu_device = 0             -- CUDA device number (0 for first GPU)
         }
@@ -342,7 +342,7 @@ User sends signal or CLI command to trigger reload.
 , macos =
     { audio = { microphone_device = "default" }
     , whisper =
-        { model = "medium"           -- Options: tiny, base, small, medium, large, large-v3
+        { model = "medium.en"        -- Options: tiny, base, small, medium, large, large-v3
         , model_path = None Text     -- Optional: custom model path
         , use_gpu = True             -- Enable Metal/ANE acceleration
         }

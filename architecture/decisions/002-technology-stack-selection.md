@@ -20,7 +20,7 @@ Constraints:
 
 ### Speech Recognition
 **Linux:** faster-whisper (CUDA) via custom Python wrapper subprocess
-**macOS:** whisper.cpp (Metal/ANE) via subprocess
+**macOS:** whisper.cpp via subprocess — CoreML (ANE) build preferred by default; Metal build used as fallback
 
 Both support server mode for future streaming migration via HTTP/sockets.
 
@@ -243,8 +243,8 @@ Write minimal bindings yourself
 # Install faster-whisper Python library
 pip install faster-whisper
 
-# Custom Python wrapper script included in repository
-# Located at: ./scripts/whisper-transcribe.py
+# Custom Python wrapper script installed at a fixed path
+# Located at: /usr/local/lib/whisper-input/whisper-transcribe.py
 
 # Install and setup ydotool
 # Distribution-specific package manager
@@ -257,8 +257,8 @@ systemctl --user enable --now ydotoold
 
 **macOS (Apple Silicon):**
 ```bash
-# Install whisper.cpp
-brew install whisper-cpp
+# Preferred: build whisper.cpp with CoreML (ANE) enabled
+# (fallback: Homebrew Metal build via `brew install whisper-cpp`)
 
 # Install cliclick
 brew install cliclick

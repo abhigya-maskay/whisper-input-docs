@@ -10,13 +10,13 @@ Covers: model management, process lifecycle, timeouts, file management, output p
 ## Decision
 
 ### Models
-All sizes supported (tiny/base/small/medium/large-v1/v2/v3), default: medium
+All sizes supported (tiny/base/small/medium/large-v1/v2/v3), default: medium.en
 Config: model name + optional path override
 
 ### Validation
 Startup checks per ADR-004:
-- Linux: faster-whisper lib, wrapper script at `./scripts/whisper-transcribe.py`
-- macOS: model file exists
+- Linux: faster-whisper lib, wrapper script at `/usr/local/lib/whisper-input/whisper-transcribe.py`
+- macOS: model file exists; whisper.cpp built with CoreML (ANE) preferred, Metal fallback
 Auto-download on Linux, manual on macOS via `./scripts/download-model-macos.sh`
 
 ### Parameters (Hardcoded)
@@ -140,7 +140,7 @@ Platform adapters:
 python -c "import faster_whisper"
 
 # Check custom wrapper script exists
-test -f ./scripts/whisper-transcribe.py
+test -f /usr/local/lib/whisper-input/whisper-transcribe.py
 ```
 
 **macOS:**
@@ -159,7 +159,7 @@ ls ~/.whisper-models/ggml-medium.bin
 # Custom wrapper script: ./scripts/whisper-transcribe.py
 # Takes: audio_file model_name device device_index
 # Outputs: JSON with transcription text
-python ./scripts/whisper-transcribe.py /path/to/audio.wav medium cuda 0
+python /usr/local/lib/whisper-input/whisper-transcribe.py /path/to/audio.wav medium.en cuda 0
 ```
 
 **macOS (whisper.cpp):**
@@ -194,7 +194,7 @@ whisper-cpp -m /path/to/model -f /path/to/audio.wav -l en --output-json
 ## Notes
 
 **Custom Python Wrapper (Linux):**
-The faster-whisper library is a Python API, not a standalone CLI tool. Rather than depending on unmaintained third-party CLI wrappers, we maintain a minimal Python script (`./scripts/whisper-transcribe.py`) in the project repository. This wrapper:
+The faster-whisper library is a Python API, not a standalone CLI tool. Rather than depending on unmaintained third-party CLI wrappers, we install a minimal Python script at a fixed path (`/usr/local/lib/whisper-input/whisper-transcribe.py`). This wrapper:
 - Accepts command-line arguments (audio file, model, device, device index)
 - Uses the faster-whisper Python API
 - Outputs JSON with transcription text to stdout
