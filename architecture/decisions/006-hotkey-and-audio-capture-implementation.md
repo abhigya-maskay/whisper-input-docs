@@ -4,145 +4,55 @@
 Accepted
 
 ## Context
-Whisper Input requires a hotkey-triggered audio capture mechanism for voice dictation. The system must detect when the user wants to record, capture audio while they speak, and stop when they're done. This ADR covers hotkey registration, audio process management, application architecture, and user feedback.
-
-Key considerations:
-- **Hold-to-talk workflow** - User presses and holds key to record, releases to stop and transcribe
-- **Platform differences** - Linux (Hyprland/Wayland) and macOS require different hotkey mechanisms
-- **Process orchestration** - Audio capture runs as subprocess, needs lifecycle management
-- **Background daemon** - Runs continuously, responds to hotkey commands
-- **Safety limits** - Prevent runaway recordings and accidental activations
-- **User feedback** - Balance between informative and non-intrusive notifications
-- **Error handling** - Fail fast with clear feedback per ADR-004
+Hotkey-triggered audio capture with hold-to-talk workflow.
+Covers: hotkey handling, audio subprocess management, daemon architecture, duration limits, feedback
 
 ## Decision
 
-### Hotkey Behavior
-**Hold-to-talk activation:**
-- User presses and holds configured hotkey → recording starts
-- User releases hotkey → recording stops, transcription begins
-- Natural, intuitive gesture for voice input
+### Hotkey
+**Hold-to-talk:** press holds → record, release → stop & transcribe
 
-### Platform-Specific Hotkey Handling
+**Platform handling:**
+- Linux: Hyprland `bind`/`bindrelease` in `~/.config/hypr/hyprland.conf`
+- macOS: skhd in `~/.skhdrc`
+Manual config (no automation)
 
-**Linux (Hyprland):**
-- Use Hyprland's native `bind` and `bindrelease` directives
-- User manually configures `~/.config/hypr/hyprland.conf`:
-  - `bind = SUPER_SHIFT, Space, exec, whisper-input start-recording`
-  - `bindrelease = SUPER_SHIFT, Space, exec, whisper-input stop-recording`
-- Leverages existing window manager infrastructure
+### Architecture
+**Single binary, two modes:**
+- Daemon: background, maintains state, listens on Unix socket
+- Command: `start-recording`/`stop-recording` via socket IPC
 
-**macOS:**
-- Use `skhd` (Simple Hotkey Daemon)
-- User manually configures `~/.skhdrc` with press/release bindings
-- Consistent architecture across platforms (external hotkey handler → app commands)
+### IPC
+Unix socket at `$XDG_RUNTIME_DIR/whisper-input.sock`
+Protocol: `START`/`STOP`, responds `ACK`/`ERROR: msg`
 
-**Configuration approach:**
-- Manual setup via documentation only
-- No automated scripts or file editing
-- User has full control over configuration files
+PID file at `$XDG_RUNTIME_DIR/whisper-input.pid`
+Startup checks PID, cleans stale socket, auto-recovers from crashes
 
-### Application Architecture
-**Single binary with dual modes:**
+### Daemon Lifecycle
+systemd/launchd service (manual setup), auto-restart, starts on login
 
-**Daemon mode:**
-- Long-running background process
-- Maintains state (recording status, transcription in progress)
-- Listens for commands via Unix domain socket
-- Started via systemd (Linux) or launchd (macOS) service
+### Audio Process
+Fresh subprocess per recording (pw-record/parecord/sox)
+Writes `~/.local/state/whisper-input/recordings/recording-{timestamp}.wav`
+SIGTERM on stop, passes file to Whisper
 
-**Command mode:**
-- Lightweight client invocations: `whisper-input start-recording` / `whisper-input stop-recording`
-- Connects to daemon via socket
-- Sends command, receives acknowledgment or error
-- Exits immediately after response
+### Duration Limits
+Max: 60s (kill, notify, wait for release, transcribe)
+Min: 0.5s (discard, acts as cancel)
 
-### IPC Mechanism
-**Unix domain socket:**
-- Location: `$XDG_RUNTIME_DIR/whisper-input.sock`
-- Fallback: `/tmp/whisper-input-$UID.sock` if `XDG_RUNTIME_DIR` unset
-- Simple text protocol: `START` / `STOP` commands
-- Daemon responds with `ACK` or `ERROR: message`
-- Bidirectional communication for error reporting
+### Feedback
+- Recording: silent (key hold is feedback)
+- Transcription: silent if <3s, "Transcribing..." if ≥3s
+- Errors: immediate notification (ADR-004)
+- Concurrent: "Transcription in progress" notification
 
-**Daemon startup:**
-- Write PID to `$XDG_RUNTIME_DIR/whisper-input.pid`
-- On startup, check for existing socket:
-  - If socket exists, read PID file
-  - Check if PID process is running
-  - If running, fail with error (daemon already running)
-  - If not running, clean up stale socket and PID file, then start
-- Automatic recovery from crashes without manual intervention
+### Validation
+Startup checks mic device exists (ADR-004)
 
-### Daemon Lifecycle Management
-**systemd/launchd service:**
-- Daemon started via system service manager
-- User sets up service manually (one-time configuration)
-- Auto-restart on crash
-- Starts on login
-- Service file templates provided in documentation
-
-### Audio Capture Process Management
-**Fresh subprocess per recording:**
-- `start-recording` command → daemon spawns audio capture process (`pw-record` / `parecord` / `sox`)
-- Process writes audio to file: `~/.local/state/whisper-input/recordings/recording-{timestamp}.wav`
-- `stop-recording` command → daemon sends SIGTERM to process
-- Process exits cleanly, finalizes WAV file
-- File passed to Whisper for transcription
-
-### Recording Duration Limits
-**Maximum duration: 60 seconds**
-- Hard limit to prevent accidental runaway recordings
-- At 60 seconds, daemon kills recording process (SIGTERM)
-- Shows notification: "Maximum recording duration reached (60s)"
-- Waits for user to release key (completes hold-to-talk gesture)
-- When key released, proceeds with transcription of 60-second recording
-
-**Minimum duration: 0.5 seconds**
-- Recordings shorter than 0.5 seconds are discarded
-- Shows low-priority notification: "Recording too short"
-- Acts as implicit cancelation mechanism (quick tap = abort)
-- Filters accidental hotkey taps
-
-### User Feedback Strategy
-
-**During recording:**
-- No notifications while recording
-- Physical act of holding key is the feedback
-- Minimal distraction, clean UX
-
-**During transcription:**
-- If transcription completes in < 3 seconds: silent, text just appears
-- If transcription takes ≥ 3 seconds: show notification "Transcribing..."
-- Adaptive feedback - only notify when useful
-
-**On errors:**
-- Immediate notification on recording failure (aligns with ADR-004 fail-fast)
-- If recording process fails to start or crashes, show error immediately (even if key still held)
-- User can release key and retry
-
-**On concurrent requests:**
-- If hotkey pressed while transcription in progress: ignore, show notification "Transcription in progress, please wait"
-- No queuing, no cancelation of in-progress transcription
-
-### Audio Device Validation
-**Startup validation only:**
-- On daemon startup, validate configured microphone device exists
-- Fail daemon startup if device not found (aligns with ADR-004 startup validation)
-- Show critical notification with device name and setup instructions
-- Exit with non-zero status code
-
-### Concurrent Hotkey Handling
-**Single recording/transcription at a time:**
-- Daemon tracks state: idle / recording / transcribing
-- Hotkey press ignored if not in idle state
-- Prevents race conditions and out-of-order text injection
-- Simple state management, predictable behavior
-
-**Multiple presses during recording:**
-- Once recording started, ignore additional key presses
-- Only the first key release stops recording
-- No key-repeat or multi-finger edge cases
+### Concurrency
+Single transcription, states: idle/recording/transcribing
+Block new requests if not idle
 
 ## Options Considered
 
@@ -508,7 +418,7 @@ Key considerations:
 
 #### Option A: Startup only (Selected)
 **Pros:**
-- Aligns with ADR-004 startup validation philosophy
+- Per ADR-004 startup validation philosophy
 - Fast recording start (no repeated checks)
 - Device changes rare for personal use
 
@@ -539,7 +449,7 @@ Key considerations:
 - Clear feedback
 - Simple state management
 - Predictable behavior
-- Matches ADR-005 specification
+- Per ADR-005 concurrent handling
 
 **Cons:**
 - User sees notification if they accidentally press
@@ -593,30 +503,15 @@ Key considerations:
 ## Consequences
 
 ### Positive
-- Hold-to-talk provides natural, intuitive voice input gesture
-- Platform-specific hotkey handlers leverage existing, reliable infrastructure
-- Daemon architecture maintains state efficiently across recordings
-- Unix socket IPC is standard, fast, and supports error reporting
-- PID file enables automatic recovery from crashes without manual intervention
-- Service management ensures daemon reliability and auto-restart
-- Audio process lifecycle is simple and aligns with ADR-002 subprocess approach
-- Duration limits prevent accidents while allowing substantial dictation
-- Adaptive feedback minimizes distraction while providing reassurance for slow operations
-- Fail-fast error handling provides immediate feedback (ADR-004 alignment)
-- Single binary simplifies installation and distribution
-- Startup validation catches configuration issues before first use
+- Natural hold-to-talk gesture
+- Leverages existing infrastructure (Hyprland/skhd)
+- PID file enables crash recovery
+- Adaptive feedback minimizes distraction
+- Single binary simplifies distribution
 
 ### Negative
-- Requires manual hotkey configuration (one-time setup cost)
-- Additional dependency on macOS (skhd)
-- IPC socket and PID file management adds complexity
-- systemd/launchd service setup required for full reliability
-- Hold-to-talk requires physically holding key (minor for short dictation)
-- No queuing of concurrent requests (acceptable for personal use)
-- Device unplugged after startup causes runtime error rather than graceful handling
-
-### Neutral
-- Platform-specific hotkey mechanisms reflect platform differences appropriately
-- Manual configuration gives user full control over their system
-- Daemon runs continuously (minimal resource usage, standard for system tools)
-- Socket/PID files in runtime directory cleaned up automatically on logout
+- Manual hotkey config required
+- macOS needs skhd dependency
+- IPC/PID management adds complexity
+- Service setup required
+- No concurrent request queuing

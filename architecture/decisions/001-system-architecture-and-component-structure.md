@@ -4,23 +4,20 @@
 Accepted
 
 ## Context
-Whisper Input is a personal voice-to-text input tool for local use only. The system needs to capture audio, process it through speech recognition, and deliver text to applications on a single machine.
-
-Key considerations:
-- **Personal use only** - no deployment, scaling, or multi-user concerns
-- **Offline-first** - all processing happens locally for privacy
-- Need to handle audio capture from system microphone
-- Integration with local Whisper model for speech recognition
-- Text delivery to active applications/text fields
-- User interface for control and configuration
+Personal voice-to-text tool for local use. Requirements:
+- Offline audio capture, speech recognition, text injection
 - System tray/background operation
-- Maintainability for a single developer/user
+- Single developer maintainability
 - Simplicity over flexibility
 
 ## Decision
-**We will use a simple monolithic application architecture** (Option 1).
+**Single binary with daemon+client process model**
 
-The system will be a single desktop application with well-defined internal modules for audio capture, speech recognition, text injection, UI, and state management. This approach prioritizes simplicity and maintainability - the right fit for a personal tool.
+Two modes:
+- **Daemon mode**: Background process managing state and orchestrating audio capture, speech recognition, text injection
+- **Command mode**: Lightweight IPC clients for hotkey triggers
+
+Single codebase. Daemon maintains state; commands are instant and lightweight.
 
 ## Options Considered
 
@@ -76,10 +73,8 @@ Collection of scripts tied together:
 
 ## Consequences
 
-- Fast to develop and iterate
-- Easy to understand the entire system at once
-- Good fit for desktop application frameworks (Electron, Tauri, Python + Qt, etc.)
-- Single codebase simplifies debugging and maintenance
-- Can refactor to multi-process later if requirements change (unlikely for personal use)
-- All components will need to be compatible with the chosen tech stack
+- Single codebase simplifies development and debugging
+- Daemon maintains state across recordings (idle/recording/transcribing)
+- Lightweight IPC enables instant hotkey response
+- Unix domain socket for start/stop commands
 

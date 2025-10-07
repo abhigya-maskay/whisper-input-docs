@@ -4,139 +4,49 @@
 Accepted
 
 ## Context
-Whisper Input is a background daemon that orchestrates multiple external processes (audio capture, speech recognition, text injection) with potential failure points at every step. As a personal tool running as a system service, it needs robust error handling and observability.
+Background daemon orchestrating external processes. Failure points:
+- Startup: missing dependencies, invalid config
+- Runtime: mic unavailable, transcription/injection failures
+- Subprocess: crashes, non-zero exits
+- Resources: disk full, permissions
 
-Key considerations:
-- **Interactive workflow** - User presses hotkey and expects immediate feedback
-- **Multiple failure points** - Microphone unavailable, Whisper process crashes, text injection fails, dependencies missing
-- **Background operation** - Running as systemd/launchd service (no visible terminal)
-- **Debugging complexity** - Subprocess integration means errors can occur in external tools
-- **Personal use** - Single user needs clear feedback and debugging capability
-- **Simplicity** - Avoid over-engineering for edge cases
-
-Critical failure scenarios:
-1. **Startup failures** - Missing dependencies (faster-whisper, ydotool), daemon not running (ydotoold), invalid config
-2. **Runtime failures** - Microphone busy/unavailable, Whisper transcription fails, text injection blocked
-3. **Subprocess failures** - External tools crash, return non-zero exit codes, produce unexpected output
-4. **Resource failures** - Disk full, permissions denied, temp file creation fails
+Requirements: immediate feedback, debugging capability
 
 ## Decision
 
-### Error Handling Philosophy
-**Fail fast and notify immediately** - Stop operations on critical errors and inform the user via desktop notifications.
+### Philosophy
+**Fail fast, notify immediately**
+- Critical failures → desktop notification + stop operation
+- Startup failures → validate dependencies, fail with explanation
+- Non-critical → log only
 
-**Critical failures → Immediate notification:**
-- Microphone unavailable
-- Whisper process failure
-- Text injection failure
-- Dependency missing
+### Notifications
+`notify-send` (Linux) / `osascript` (macOS)
+- Critical: startup/dependency failures
+- Normal: runtime errors
+- Low: warnings
+Messages are user-friendly (no stack traces)
 
-**Startup failures → Fail hard with explanation:**
-- Config malformed (show Dhall error)
-- Dependencies missing (show what's missing and how to install)
-- Hotkey registration fails (show conflict)
-- **Validate all critical dependencies on startup** before proceeding
+### Logging
+**Levels:** DEBUG (verbose), INFO (key ops), WARN (non-critical), ERROR (critical)
+**Config:** `log_level` in config.dhall, `WHISPER_INPUT_LOG_LEVEL` env var override
+**Format:** `timestamp [Component] LEVEL message`
+**Location:** `~/.local/state/whisper-input/whisper-input.log` (XDG compliant)
+**Rotation:** 10MB max, keep 3 files (~30MB total)
 
-**Non-critical → Log only:**
-- Temp file cleanup failures
-- Unknown config fields (forward compatibility)
-
-### Notification Mechanism
-**Desktop notifications + logging** (both channels):
-
-**Notifications:**
-- Use `notify-send` (Linux) / `osascript -e 'display notification'` (macOS)
-- User-friendly error messages (sanitized, no stack traces)
-- Severity-based urgency levels:
-  - **Critical** - Startup failures, missing dependencies (stays on screen)
-  - **Normal** - Runtime errors like transcription failures (standard notification)
-  - **Low** - Warnings (or no notification, log only)
-
-**Logging:**
-- Complete error details, stack traces, subprocess output
-- Persistent file for debugging and audit trail
-
-### Logging System
-**Log levels:**
-- **DEBUG** - Verbose subprocess details, audio buffers, every operation
-- **INFO** - Key operations (recording started/stopped, transcription completed, text injected)
-- **WARN** - Retryable errors, deprecations, non-critical issues
-- **ERROR** - Critical failures that stop current operation
-
-**Log level configuration:**
-- Default level in `config.dhall`: `log_level = "INFO"`
-- Environment variable override: `WHISPER_INPUT_LOG_LEVEL=DEBUG`
-- Restart required for config change, env var works immediately
-
-**Log format:**
-```
-2025-10-06 14:32:15 [AudioCapture] INFO Recording started
-2025-10-06 14:32:18 [Whisper] INFO Transcription completed: "Hello world"
-2025-10-06 14:32:19 [TextInjection] ERROR Text injection failed: ydotool not responding
-```
-- Timestamp (ISO 8601)
-- Component name in brackets
-- Log level
-- Message
-
-**Log file location:**
-- **Path:** `~/.local/state/whisper-input/whisper-input.log`
-- Follows XDG State Directory specification
-- Platform-independent (works on Linux and macOS)
-
-**Log rotation:**
-- **Max file size:** 10 MB before rotation
-- **Retention:** Keep last 3 files (current + 2 backups = ~30MB total)
-- **Naming:** `whisper-input.log`, `whisper-input.log.1`, `whisper-input.log.2`
-- Automatic rotation when size limit reached
-
-### Subprocess Error Handling
-**On subprocess failure (non-zero exit, crash):**
-- Capture both stdout and stderr
-- **Notification:** User-friendly message (sanitized, no raw subprocess output)
-  - Example: "Whisper transcription failed" instead of Python traceback
-- **Logs:**
-  - ERROR level: Sanitized error message with context
-  - DEBUG level: Full subprocess stdout, stderr, exit code, command line
-
-**Subprocess output logging:**
-- **stdout:** Always logged at DEBUG level
-- **stderr:** Always logged at DEBUG level
-- **On failure:** stderr also logged at ERROR level with context
+### Subprocess Errors
+Capture stdout/stderr
+- Notification: sanitized message
+- Logs: ERROR (sanitized), DEBUG (full output + exit code)
 
 ### Startup Validation
-**Validate critical dependencies before running:**
+**Linux:** faster-whisper, ydotoold running, pw-record/parecord, model files
+**macOS:** whisper.cpp, cliclick, sox, Accessibility permissions, model files
+On failure: ERROR log + critical notification + exit non-zero
 
-**Linux checks:**
-1. `faster-whisper` in PATH (or Python module available)
-2. `ydotoold` daemon running (`systemctl --user is-active ydotoold`)
-3. Audio recording tool available (`pw-record` or `parecord` in PATH)
-4. Whisper model files exist (if specified in config)
-
-**macOS checks:**
-1. `whisper.cpp` binary in PATH
-2. `cliclick` in PATH
-3. `sox` in PATH
-4. Accessibility permissions granted (if detectable)
-5. Whisper model files exist
-
-**On validation failure:**
-- Log detailed error at ERROR level
-- Show critical-priority notification with fix instructions
-- Exit with non-zero status code
-- Example: "Startup failed: ydotoold daemon not running. Start it with: systemctl --user start ydotoold"
-
-### Error Context & Stack Traces
-**INFO/WARN/ERROR levels:**
-- Error message with operation context
-- Example: "Failed to start audio recording: Microphone 'default' not found"
-- No stack traces (clean, readable)
-
-**DEBUG level:**
-- Full Haskell stack traces (when available)
-- Subprocess stderr output
-- Environment details (working directory, PATH, env vars)
-- Maximum debugging capability
+### Stack Traces
+INFO/WARN/ERROR: clean messages only
+DEBUG: full Haskell traces, subprocess stderr, env details
 
 ## Options Considered
 
@@ -236,11 +146,11 @@ Critical failure scenarios:
 
 #### Option A: XDG State Directory - `~/.local/state/whisper-input/` (Selected)
 **Pros:**
-- ✅ **Follows XDG standard** - Correct semantic location for state/logs
+- ✅ **Follows XDG standard** - Per ADR-003, state/logs belong in `$XDG_STATE_HOME`
 - ✅ **Cross-platform** - Works on Linux and macOS
-- ✅ **Organized** - Separate from config (`~/.config`) and cache
+- ✅ **Organized** - Separate from config (`~/.config`)
 - ✅ **Respects `$XDG_STATE_HOME`** - User can override
-- ✅ **Future-proof** - Room for other state files (PID, temp files)
+- ✅ **Future-proof** - Room for other state files
 
 **Cons:**
 - Less common than `~/.config` (but more semantically correct)
@@ -330,28 +240,17 @@ Critical failure scenarios:
 ## Consequences
 
 ### Positive
-- ✅ **Clear user feedback** - Instant notification when errors occur
-- ✅ **Excellent debugging** - Full logs at DEBUG level with all subprocess details
-- ✅ **Flexible verbosity** - INFO by default, DEBUG when needed, env var override
-- ✅ **XDG-compliant** - Follows standards for state directory
-- ✅ **Predictable disk usage** - Log rotation caps at ~30MB
-- ✅ **Fast startup failure** - Dependency validation catches setup issues immediately
-- ✅ **Production-ready logging** - Structured format with component names and timestamps
-- ✅ **Component isolation** - Can trace errors to specific subsystems
-- ✅ **Audit trail** - INFO logs show what app was doing when error occurred
-- ✅ **Simple implementation** - No complex retry logic or fallback chains
+- Instant error notification
+- Full debugging at DEBUG level
+- Flexible verbosity (config + env var)
+- XDG-compliant
+- Predictable disk usage (~30MB cap)
+- Startup validation catches setup issues early
 
 ### Negative
-- Desktop notification dependencies (notify-send, osascript) required
-- Must implement log rotation logic
-- Platform-specific notification commands
-- Startup validation adds slight delay (milliseconds)
-- Log files accumulate over time (but capped at 30MB)
-
-### Neutral
-- Restart required to change log level via config (env var works immediately)
-- Notifications may be intrusive during debugging (can disable if needed)
-- DEBUG level can produce large logs quickly (expected behavior)
+- Notification dependencies required
+- Platform-specific commands
+- Log files accumulate (30MB cap)
 
 ## Implementation Notes
 
@@ -367,7 +266,8 @@ Critical failure scenarios:
 ### Startup Validation
 
 **Linux dependency checks:**
-- `faster-whisper` in PATH or Python module available
+- `faster-whisper` Python module available (`python -c "import faster_whisper"`)
+- Custom Python wrapper script exists (`./scripts/whisper-transcribe.py`)
 - `pw-record` or `parecord` in PATH
 - `ydotoold` service running (check via `systemctl --user is-active`)
 

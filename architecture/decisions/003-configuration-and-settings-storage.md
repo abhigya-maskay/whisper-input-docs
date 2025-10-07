@@ -4,81 +4,56 @@
 Accepted
 
 ## Context
-Whisper Input needs a configuration system for user-customizable settings. As a personal tool running on both Linux and macOS, the configuration must:
-- Be easy to understand and edit manually
-- Support platform-specific settings (different hotkeys, GPU configurations)
-- Provide sensible defaults for first-run experience
-- Handle missing or incomplete configurations gracefully
-- Integrate well with Haskell's type system
+Configuration for audio, Whisper models, and logging. Requirements:
+- Manual editing support
+- Platform-specific settings (GPU configs differ)
+- Type safety
+- Sensible defaults
 
-Initial scope covers three essential setting categories:
-1. **Hotkey configuration** - What key combination triggers voice recording
-2. **Audio settings** - Which microphone device to use
-3. **Whisper model settings** - Model size and GPU device selection
-
-Key considerations:
-- **Personal use only** - No need for complex validation or migration systems
-- **Type safety** - Leverage Haskell's strengths to catch config errors early
-- **Platform differences** - Linux uses CUDA device numbers, macOS uses Metal/ANE; different hotkey conventions
-- **Simplicity over flexibility** - Avoid over-engineering for edge cases
-- **Infrequent changes** - Configuration set once at setup, rarely modified afterward
+Note: Hotkeys configured externally (Hyprland/skhd, see ADR-006)
 
 ## Decision
 
-### Configuration Format: Dhall
-Use **Dhall** as the configuration language with strong typing and validation.
+### Format: Dhall (type-safe with validation)
 
-### Configuration Location: XDG Base Directory
-Store configuration at:
-- **Linux & macOS:** `~/.config/whisper-input/config.dhall`
-- Follow XDG Base Directory specification (`$XDG_CONFIG_HOME` or `~/.config`)
+### Location: `~/.config/whisper-input/config.dhall` (XDG compliant)
 
-### Configuration Schema
-Platform-specific sections with explicit settings per OS:
+### Schema
 
 ```dhall
 { linux =
-    { hotkey = "Super+Shift+Space"
-    , audio = { microphone_device = "default" }
+    { audio = { microphone_device = "default" }
     , whisper =
         { model = "medium"
+        , model_path = None Text  -- Optional: override model file path
         , gpu_device = 0  -- CUDA device number
         }
+    , log_level = "INFO"  -- DEBUG, INFO, WARN, ERROR
     }
 , macos =
-    { hotkey = "Cmd+Shift+Space"
-    , audio = { microphone_device = "default" }
+    { audio = { microphone_device = "default" }
     , whisper =
         { model = "medium"
+        , model_path = None Text  -- Optional: override model file path
         , use_gpu = True  -- Enable Metal/ANE acceleration
         }
+    , log_level = "INFO"  -- DEBUG, INFO, WARN, ERROR
     }
 }
 ```
 
-### Audio Settings (Minimal)
-- **Microphone device only** - Device name or "default"
-- **Hardcoded parameters:**
-  - Sample rate: 16kHz (Whisper optimized)
-  - Channels: Mono
-  - Bit depth: 16-bit PCM
+### Settings
+- **Audio:** Microphone device only (format hardcoded: 16kHz, mono, 16-bit PCM)
+- **Whisper:** Model name (tiny/base/small/medium/large/large-v3), optional path override
+- **GPU:** Linux uses CUDA device number, macOS uses boolean (Metal on/off)
+- **Logging:** DEBUG/INFO/WARN/ERROR
 
-### GPU Configuration (Platform-Specific)
-- **Linux:** `gpu_device` field with CUDA device number (0, 1, 2...)
-- **macOS:** `use_gpu` boolean (True = Metal/ANE, False = CPU)
+### Defaults
+Generated on first run: default mic, medium model, GPU enabled, INFO logging
+Fail on malformed config (Dhall type errors)
 
-### Default Configuration Behavior
-- **Generate default config on first run** if `config.dhall` doesn't exist
-- **Use sensible defaults:**
-  - Hotkey: `Super+Shift+Space` (Linux), `Cmd+Shift+Space` (macOS)
-  - Microphone: `"default"` (system default device)
-  - Model: `"medium"` (balance of speed/accuracy)
-  - GPU: Enabled (device 0 on Linux, Metal on macOS)
-- **Fail on invalid config** - If config exists but is malformed, Dhall type errors prevent startup
-
-### Configuration Reload
-- **Restart required** - Changes take effect after application restart
-- No hot-reloading or file watching
+### Reload
+Restart required (no hot-reload)
 
 ## Options Considered
 
@@ -136,14 +111,19 @@ Platform-specific sections with explicit settings per OS:
 `~/.config/whisper-input/config.dhall`
 
 **Pros:**
-- ✅ **Standard** - Follows Linux/Unix conventions
+- ✅ **Standard** - Follows XDG Base Directory specification for configuration files
 - ✅ **Organized** - Keeps `~/.config` clean with directory per app
-- ✅ **Works on macOS** - XDG standard respected by many tools
-- ✅ **Expandable** - Room for multiple config files later (models, logs)
+- ✅ **Cross-platform** - Works on Linux and macOS
+- ✅ **Expandable** - Room for multiple config files later
 - ✅ **Respects `$XDG_CONFIG_HOME`** - User can override location
 
 **Cons:**
 - Slightly more complex path
+
+**Note:** XDG Base Directory specification separates concerns:
+- Config: `$XDG_CONFIG_HOME` (default `~/.config`)
+- State/logs: `$XDG_STATE_HOME` (default `~/.local/state`) - see ADR-004
+- Runtime: `$XDG_RUNTIME_DIR` - see ADR-006
 
 #### Option 2: Home directory dotfile
 `~/.whisper-input.dhall`
@@ -168,49 +148,6 @@ macOS: `~/Library/Application Support/whisper-input/config.dhall`
 - ❌ **Unnecessary complexity** - Adds platform-specific logic
 - ❌ **User confusion** - Different paths per platform
 - ❌ **No benefit** - XDG works fine on macOS
-
-### Hotkey Configuration
-
-#### Option 1: Platform-specific sections (Selected)
-```dhall
-{ linux = { hotkey = "Super+Shift+Space" }
-, macos = { hotkey = "Cmd+Shift+Space" }
-}
-```
-
-**Pros:**
-- ✅ **Explicit** - No confusion about what key triggers on which platform
-- ✅ **Type-safe** - Dhall enforces both sections exist
-- ✅ **No surprises** - User sees exact hotkey per platform
-- ✅ **Flexible** - Different hotkeys per platform if desired
-- ✅ **No translation logic** - Direct mapping to platform APIs
-
-**Cons:**
-- Must configure both platforms even if similar
-
-#### Option 2: Unified format with translation
-`hotkey = "Ctrl+Shift+Space"` → translate Ctrl→Cmd on macOS
-
-**Pros:**
-- Single configuration
-- Simpler for identical hotkeys
-
-**Cons:**
-- ❌ **Hidden complexity** - Translation rules not obvious
-- ❌ **Surprising** - User might not expect Ctrl→Cmd mapping
-- ❌ **Platform conventions differ** - Super vs Cmd have different semantics
-- ❌ **Edge cases** - What about platform-specific modifiers?
-
-#### Option 3: Raw keycodes
-Specify scancodes/keycodes directly
-
-**Pros:**
-- Maximum control
-
-**Cons:**
-- ❌ **Extremely unfriendly** - User must look up keycodes
-- ❌ **Unmaintainable** - Hard to remember what `0x39` means
-- ❌ **Overkill** - No benefit for simple hotkeys
 
 ### Audio Settings Granularity
 
@@ -373,25 +310,14 @@ User sends signal or CLI command to trigger reload.
 ## Consequences
 
 ### Positive
-- ✅ **Type safety** - Dhall catches config errors before runtime
-- ✅ **Excellent error messages** - Clear feedback on malformed configs
-- ✅ **Zero-config first run** - Works out of box with sensible defaults
-- ✅ **Fully customizable** - Generated config file easy to edit
-- ✅ **Platform-explicit** - No hidden translation logic or surprises
-- ✅ **Simple implementation** - Minimal code, restart-based reload
-- ✅ **Prevents misconfiguration** - Hardcoded audio params avoid footguns
-- ✅ **Standard location** - XDG Base Directory compliance
-- ✅ **Haskell-friendly** - Excellent `dhall` library integration
+- Type safety catches errors before runtime
+- Zero-config first run with sensible defaults
+- Hardcoded audio params prevent misconfiguration
+- XDG compliant
 
 ### Negative
-- Dhall less familiar than YAML (minor - user is technical)
-- Must implement default config generation logic
-- Restart required for config changes (acceptable - rare occurrence)
-- Platform-specific sections more verbose (worthwhile for explicitness)
-
-### Neutral
-- Config directory grows if we add more files later (acceptable, organized)
-- Dhall adds dependency (small, stable library)
+- Restart required for changes
+- Platform-specific sections add verbosity
 
 ## Implementation Notes
 
@@ -400,22 +326,27 @@ User sends signal or CLI command to trigger reload.
 ```dhall
 -- ~/.config/whisper-input/config.dhall
 -- Generated on first run, customize as needed
+-- Note: Hotkeys are configured externally (see ADR-006)
+--   Linux: ~/.config/hypr/hyprland.conf
+--   macOS: ~/.skhdrc
 
 { linux =
-    { hotkey = "Super+Shift+Space"
-    , audio = { microphone_device = "default" }
+    { audio = { microphone_device = "default" }
     , whisper =
-        { model = "medium"  -- Options: tiny, base, small, medium, large, large-v3
-        , gpu_device = 0    -- CUDA device number (0 for first GPU)
+        { model = "medium"           -- Options: tiny, base, small, medium, large, large-v3
+        , model_path = None Text     -- Optional: custom model path
+        , gpu_device = 0             -- CUDA device number (0 for first GPU)
         }
+    , log_level = "INFO"             -- Options: DEBUG, INFO, WARN, ERROR
     }
 , macos =
-    { hotkey = "Cmd+Shift+Space"
-    , audio = { microphone_device = "default" }
+    { audio = { microphone_device = "default" }
     , whisper =
-        { model = "medium"
-        , use_gpu = True    -- Enable Metal/ANE acceleration
+        { model = "medium"           -- Options: tiny, base, small, medium, large, large-v3
+        , model_path = None Text     -- Optional: custom model path
+        , use_gpu = True             -- Enable Metal/ANE acceleration
         }
+    , log_level = "INFO"             -- Options: DEBUG, INFO, WARN, ERROR
     }
 }
 ```
@@ -436,15 +367,15 @@ data Config = Config
   } deriving (Generic, FromDhall)
 
 data LinuxConfig = LinuxConfig
-  { hotkey :: Text
-  , audio :: AudioConfig
+  { audio :: AudioConfig
   , whisper :: LinuxWhisperConfig
+  , log_level :: Text
   } deriving (Generic, FromDhall)
 
 data MacOSConfig = MacOSConfig
-  { hotkey :: Text
-  , audio :: AudioConfig
+  { audio :: AudioConfig
   , whisper :: MacOSWhisperConfig
+  , log_level :: Text
   } deriving (Generic, FromDhall)
 
 data AudioConfig = AudioConfig
@@ -453,11 +384,13 @@ data AudioConfig = AudioConfig
 
 data LinuxWhisperConfig = LinuxWhisperConfig
   { model :: Text
+  , model_path :: Maybe Text
   , gpu_device :: Natural
   } deriving (Generic, FromDhall)
 
 data MacOSWhisperConfig = MacOSWhisperConfig
   { model :: Text
+  , model_path :: Maybe Text
   , use_gpu :: Bool
   } deriving (Generic, FromDhall)
 
@@ -507,6 +440,9 @@ User workflow for config changes:
 ## Related Decisions
 - **ADR-001**: System Architecture - Monolithic application loads config once at startup
 - **ADR-002**: Technology Stack - Haskell chosen, Dhall is natural fit with excellent library support
+- **ADR-004**: Error Handling & Logging - Log level configuration with environment variable override
+- **ADR-005**: Local Whisper Model Integration - Model path override for custom model locations
+- **ADR-006**: Hotkey & Audio Capture - Hotkeys configured externally in Hyprland/skhd, not in application config
 
 ## Future Considerations
 

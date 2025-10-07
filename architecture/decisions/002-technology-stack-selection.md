@@ -4,87 +4,45 @@
 Accepted
 
 ## Context
-Whisper Input is a personal voice-to-text tool built in Haskell, targeting Linux (Hyprland/Wayland) and macOS (Apple Silicon). The tool needs to:
-- Capture audio from the microphone
-- Transcribe speech using local Whisper models with GPU acceleration
-- Inject transcribed text into any application
-- Provide minimal UI (CLI-based with hotkeys)
-- Support future evolution toward chunked/streaming transcription
+Haskell voice-to-text tool for Linux (Hyprland/Wayland) and macOS (Apple Silicon). Requirements:
+- GPU-accelerated transcription (CUDA/Metal)
+- Audio capture and text injection
+- Minimal CLI interface
+- Future streaming support
 
-Key constraints:
-- **Performance-critical**: Fast transcription using GPU acceleration (NVIDIA CUDA on Linux, Metal on macOS)
-- **Privacy-first**: All processing happens locally
-- **Platform-specific optimization**: Different hardware capabilities per platform
-- **Maintainability**: Simple, clean architecture for single developer
-- **Reliability over micro-optimization**: Prefer battle-tested tools over complex FFI bindings
-- **Development velocity**: Minimize time spent on infrastructure, maximize feature development
-- **Future-proofing**: Enable migration to streaming/chunked transcription later
+Constraints:
+- Reliability over micro-optimization (battle-tested tools, no complex FFI)
+- Platform-specific optimization per GPU
 
 ## Decision
 
-We will use the following technology stack:
-
-### Core Language
-- **Haskell** - As specified in Project Overview
+### Core: Haskell
 
 ### Speech Recognition
-Platform-specific implementations optimized for each GPU:
+**Linux:** faster-whisper (CUDA) via custom Python wrapper subprocess
+**macOS:** whisper.cpp (Metal/ANE) via subprocess
 
-**Linux (NVIDIA GPU):**
-- **faster-whisper** with CUDA acceleration
-- Integration via subprocess (CLI mode initially)
-- Python-based wrapper around CTranslate2
-
-**macOS (Apple Silicon):**
-- **whisper.cpp** with Metal and Core ML/ANE acceleration
-- Integration via subprocess (binary executable)
-- C/C++ implementation optimized for Apple Silicon
-
-**Future Migration Path:**
-- Both tools support server mode for low-latency streaming
-- Can migrate from CLI subprocess to HTTP/socket-based IPC when streaming is needed
-- No architectural changes required for this migration
+Both support server mode for future streaming migration via HTTP/sockets.
 
 ### Text Injection
-Platform-specific keystroke simulation tools:
-
-**Linux (Hyprland/Wayland):**
-- **ydotool** - Kernel-level uinput framework for keystroke injection
-- Requires: `ydotoold` daemon running (systemd service)
-- Hyprland has native support for configuring ydotool virtual devices
-
-**macOS:**
-- **cliclick** - Simple CLI tool for keyboard/mouse emulation
-- Install: `brew install cliclick`
-- Usage: `cliclick t:"text"`
-- Requires: Accessibility permissions
+**Linux:** ydotool (kernel uinput, requires ydotoold daemon)
+**macOS:** cliclick (requires Accessibility permissions)
 
 ### Audio Capture
-Platform-specific command-line tools via subprocess:
+**Linux:** pw-record (PipeWire) or parecord (PulseAudio fallback)
+**macOS:** sox
 
-**Linux:**
-- **PipeWire:** `pw-record` (modern systems)
-- **PulseAudio:** `parecord` (fallback)
-- Format: 16-bit PCM, 16kHz, mono
+Format: 16-bit PCM, 16kHz, mono
 
-**macOS:**
-- **sox** - Sound eXchange utility
-- Cross-platform audio tool with CoreAudio support
-- Install: `brew install sox`
-
-### User Interface
-- **Minimal CLI approach**
-- Configuration via config file (YAML/TOML)
-- Hotkey-based activation (no GUI)
-- Background service/daemon
-- Suitable for power users and tiling window managers
+### UI
+Minimal CLI with config file, hotkey activation, background daemon
 
 ## Options Considered
 
 ### Speech Recognition Integration
 
-#### Option 1: Platform-specific subprocess CLI (Selected)
-**Linux:** faster-whisper, **macOS:** whisper.cpp
+#### Option 1: Platform-specific subprocess (Selected)
+**Linux:** faster-whisper via custom Python wrapper, **macOS:** whisper.cpp
 
 **Pros:**
 - Best performance on each platform (CUDA on NVIDIA, Metal on Apple Silicon)
@@ -92,11 +50,13 @@ Platform-specific command-line tools via subprocess:
 - Independent updates of Whisper libraries
 - Clean separation of concerns
 - Easy migration to server mode for streaming
-- Standard approach for both tools
+- Custom wrapper provides full control over interface
+- No dependency on unmaintained third-party CLI wrappers
 
 **Cons:**
 - Two different implementations to maintain
 - Subprocess overhead (~10-50ms, negligible for record-then-transcribe)
+- Custom Python wrapper script to maintain
 
 #### Option 2: whisper.cpp on both platforms
 **Pros:**
@@ -263,30 +223,16 @@ Write minimal bindings yourself
 ## Consequences
 
 ### Positive
-- **Optimal performance** on both target platforms using native GPU acceleration
-- **Unified architecture** - subprocess approach for all external tools (whisper, audio, text injection)
-- **Rock-solid reliability** - using battle-tested command-line tools
-- **Zero FFI complexity** - no bindings, no segfaults, no memory management issues
-- **Easy to build and maintain** - pure Haskell process management
-- **Future-proof** - clear migration path to streaming via server mode
-- **Independent updates** - can update all external tools separately
-- **Minimal dependencies** - only standard system tools (mostly pre-installed)
-- **Hyprland-optimized** - ydotool integration is well-supported
-- **Negligible overhead** - subprocess latency irrelevant for 3-10 second recordings
+- Optimal GPU performance per platform
+- Unified subprocess architecture for all external tools
+- Zero FFI complexity
+- Clear streaming migration path
+- Custom Python wrapper provides full control
 
 ### Negative
-- **Platform-specific code paths** for Whisper, audio capture, and text injection
-- **External dependencies** required:
-  - Linux: faster-whisper (Python), ydotoold daemon, pw-record/parecord
-  - macOS: whisper.cpp binary, cliclick, sox
-- **Setup requirements** documented and non-trivial (CUDA, daemon configuration, permissions)
-- **No GUI** limits accessibility for non-technical users (acceptable for personal tool)
-- **Less fine-grained control** over audio stream (acceptable trade-off for simplicity)
-
-### Neutral
-- **Subprocess approach** adds minimal latency for record-then-transcribe (~10-50ms)
-- **Two Whisper implementations** to keep updated, but they're stable upstream projects
-- **Can revisit later** - decisions are reversible if requirements change
+- Platform-specific code paths
+- External dependencies (faster-whisper, ydotoold, whisper.cpp, cliclick, sox)
+- Non-trivial setup (CUDA, daemons, permissions)
 
 ## Implementation Notes
 
@@ -294,8 +240,11 @@ Write minimal bindings yourself
 
 **Linux (NVIDIA):**
 ```bash
-# Install faster-whisper
+# Install faster-whisper Python library
 pip install faster-whisper
+
+# Custom Python wrapper script included in repository
+# Located at: ./scripts/whisper-transcribe.py
 
 # Install and setup ydotool
 # Distribution-specific package manager
