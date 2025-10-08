@@ -316,4 +316,4 @@ device {
 ```
 
 ## Related Decisions
-- ADR-001: System Architecture & Component Structure - Established monolithic architecture suitable for these technology choices
+- [[001-system-architecture-and-component-structure|ADR-001: System Architecture & Component Structure]] - Established monolithic architecture suitable for these technology choices

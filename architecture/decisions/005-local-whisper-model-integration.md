@@ -4,7 +4,7 @@
 Accepted
 
 ## Context
-Integration of faster-whisper (Linux/CUDA) and whisper.cpp (macOS/Metal) per ADR-002.
+Integration of faster-whisper (Linux/CUDA) and whisper.cpp (macOS/Metal) per [[002-technology-stack-selection|ADR-002]].
 Covers: model management, process lifecycle, timeouts, file management, output parsing, concurrency
 
 ## Decision
@@ -14,7 +14,7 @@ All sizes supported (tiny/base/small/medium/large-v1/v2/v3), default: medium.en
 Config: model name + optional path override
 
 ### Validation
-Startup checks per ADR-004:
+Startup checks per [[004-error-handling-and-logging|ADR-004]]:
 - Linux: faster-whisper lib, wrapper script at `/usr/local/lib/whisper-input/whisper-transcribe.py`
 - macOS: model file exists; whisper.cpp built with CoreML (ANE) preferred, Metal fallback
 Auto-download on Linux, manual on macOS via `./scripts/download-model-macos.sh`
@@ -37,7 +37,7 @@ Kill on timeout, notify user
 Keep last 10, rotate like logs
 
 ### Errors
-Per ADR-004 fail-fast: single attempt, manual retry
+Per [[004-error-handling-and-logging|ADR-004]] fail-fast: single attempt, manual retry
 No GPU fallback (surfaces config issues)
 Empty transcription → "No speech detected" notification
 
@@ -61,7 +61,7 @@ Platform adapters:
 - Medium only - Too limiting
 
 ### Model Validation
-- **Startup validation** (Selected) - Fail fast with clear errors, consistent with ADR-004
+- **Startup validation** (Selected) - Fail fast with clear errors, consistent with [[004-error-handling-and-logging|ADR-004]]
 - Lazy validation - Delayed feedback, confusing UX
 - No validation - Silent failures
 
@@ -73,7 +73,7 @@ Platform adapters:
 ### Transcription Parameters
 - **Hardcode all** (Selected) - Simplicity, prevents misconfiguration
 - Language configurable - Unnecessary (English-only use case)
-- Advanced parameters - Deferred per ADR-003
+- Advanced parameters - Deferred per [[003-configuration-and-settings-storage|ADR-003]]
 
 ### Output Parsing
 - **JSON** (Selected) - Reliable, stable interface, trivial in Haskell
@@ -96,7 +96,7 @@ Platform adapters:
 - Keep on error only - More complex conditional logic
 
 ### Error Handling
-- **Fail immediately** (Selected) - Fast feedback, aligns with ADR-004
+- **Fail immediately** (Selected) - Fast feedback, aligns with [[004-error-handling-and-logging|ADR-004]]
 - Retry once - Delays feedback, transient errors rare
 - Smart retry - Complex, marginal benefit
 
@@ -164,7 +164,7 @@ python /usr/local/lib/whisper-input/whisper-transcribe.py /path/to/audio.wav med
 
 **macOS (whisper.cpp):**
 ```bash
-# See ADR-002 for full command details
+# See [[002-technology-stack-selection|ADR-002]] for full command details
 whisper-cpp -m /path/to/model -f /path/to/audio.wav -l en --output-json
 ```
 
@@ -186,10 +186,10 @@ whisper-cpp -m /path/to/model -f /path/to/audio.wav -l en --output-json
 - "No speech detected" (low priority)
 
 ## Related Decisions
-- **ADR-001**: System Architecture - Monolithic architecture simplifies subprocess orchestration
-- **ADR-002**: Technology Stack - Established faster-whisper (via custom Python wrapper) and whisper.cpp as platform-specific choices
-- **ADR-003**: Configuration & Settings Storage - Model configuration follows Dhall pattern with platform-specific sections
-- **ADR-004**: Error Handling & Logging - Startup validation, fail-fast philosophy, notification strategy
+- [[001-system-architecture-and-component-structure|ADR-001: System Architecture]] - Monolithic architecture simplifies subprocess orchestration
+- [[002-technology-stack-selection|ADR-002: Technology Stack]] - Established faster-whisper (via custom Python wrapper) and whisper.cpp as platform-specific choices
+- [[003-configuration-and-settings-storage|ADR-003: Configuration & Settings Storage]] - Model configuration follows Dhall pattern with platform-specific sections
+- [[004-error-handling-and-logging|ADR-004: Error Handling & Logging]] - Startup validation, fail-fast philosophy, notification strategy
 
 ## Notes
 

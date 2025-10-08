@@ -33,6 +33,7 @@ Messages are user-friendly (no stack traces)
 **Format:** `timestamp [Component] LEVEL message`
 **Location:** `~/.local/state/whisper-input/whisper-input.log` (XDG compliant)
 **Rotation:** 10MB max, keep 3 files (~30MB total)
+Implementation: katip file scribe with size-based rotation
 
 ### Subprocess Errors
 Capture stdout/stderr
@@ -337,6 +338,6 @@ Standardized component identifiers for logging:
 ```
 
 ## Related Decisions
-- **ADR-001**: System Architecture - Monolithic architecture simplifies error propagation
-- **ADR-002**: Technology Stack - Subprocess approach requires robust error handling for external tools
-- **ADR-003**: Configuration & Settings Storage - Log level configuration follows same pattern (Dhall + env var)
+- [[001-system-architecture-and-component-structure|ADR-001: System Architecture]] - Monolithic architecture simplifies error propagation
+- [[002-technology-stack-selection|ADR-002: Technology Stack]] - Subprocess approach requires robust error handling for external tools
+- [[003-configuration-and-settings-storage|ADR-003: Configuration & Settings Storage]] - Log level configuration follows same pattern (Dhall + env var)

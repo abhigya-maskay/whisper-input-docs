@@ -122,8 +122,8 @@ Restart required (no hot-reload)
 
 **Note:** XDG Base Directory specification separates concerns:
 - Config: `$XDG_CONFIG_HOME` (default `~/.config`)
-- State/logs: `$XDG_STATE_HOME` (default `~/.local/state`) - see ADR-004
-- Runtime: `$XDG_RUNTIME_DIR` - see ADR-006
+- State/logs: `$XDG_STATE_HOME` (default `~/.local/state`) - see [[004-error-handling-and-logging|ADR-004]]
+- Runtime: `$XDG_RUNTIME_DIR` - see [[006-hotkey-and-audio-capture-implementation|ADR-006]]
 
 #### Option 2: Home directory dotfile
 `~/.whisper-input.dhall`
@@ -326,7 +326,7 @@ User sends signal or CLI command to trigger reload.
 ```dhall
 -- ~/.config/whisper-input/config.dhall
 -- Generated on first run, customize as needed
--- Note: Hotkeys are configured externally (see ADR-006)
+-- Note: Hotkeys are configured externally (see [[006-hotkey-and-audio-capture-implementation|ADR-006]])
 --   Linux: ~/.config/hypr/hyprland.conf
 --   macOS: ~/.skhdrc
 
@@ -438,11 +438,11 @@ User workflow for config changes:
    - Manual: Kill process and restart
 
 ## Related Decisions
-- **ADR-001**: System Architecture - Monolithic application loads config once at startup
-- **ADR-002**: Technology Stack - Haskell chosen, Dhall is natural fit with excellent library support
-- **ADR-004**: Error Handling & Logging - Log level configuration with environment variable override
-- **ADR-005**: Local Whisper Model Integration - Model path override for custom model locations
-- **ADR-006**: Hotkey & Audio Capture - Hotkeys configured externally in Hyprland/skhd, not in application config
+- [[001-system-architecture-and-component-structure|ADR-001: System Architecture]] - Monolithic application loads config once at startup
+- [[002-technology-stack-selection|ADR-002: Technology Stack]] - Haskell chosen, Dhall is natural fit with excellent library support
+- [[004-error-handling-and-logging|ADR-004: Error Handling & Logging]] - Log level configuration with environment variable override
+- [[005-local-whisper-model-integration|ADR-005: Local Whisper Model Integration]] - Model path override for custom model locations
+- [[006-hotkey-and-audio-capture-implementation|ADR-006: Hotkey & Audio Capture]] - Hotkeys configured externally in Hyprland/skhd, not in application config
 
 ## Future Considerations
 

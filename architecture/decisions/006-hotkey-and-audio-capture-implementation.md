@@ -25,6 +25,9 @@ Manual config (no automation)
 ### IPC
 Unix socket at `$XDG_RUNTIME_DIR/whisper-input.sock`
 Protocol: `START`/`STOP`, responds `ACK`/`ERROR: msg`
+Implementation: Haskell `network` for Unix-domain sockets; `unix` for PID and signals
+
+If `$XDG_RUNTIME_DIR` is unset (e.g., on macOS), use `/tmp/whisper-input-$UID` (0700) as the runtime directory
 
 If socket absent: return `ERROR: daemon not running`; do not auto-start the daemon
 
@@ -38,6 +41,7 @@ systemd/launchd service (manual setup), auto-restart, starts on login
 Fresh subprocess per recording (pw-record/parecord/sox)
 Writes `~/.local/state/whisper-input/recordings/recording-{timestamp}.wav`
 On stop: send SIGINT to recorder; if not exited within 300ms, send SIGTERM. Then pass file to Whisper
+SIGINT via `unix` POSIX signal; SIGTERM via `typed-process` termination
 
 ### Duration Limits
 Max: 60s (kill, notify, wait for release, transcribe)
@@ -46,14 +50,14 @@ Min: 0.5s (discard, acts as cancel)
 ### Feedback
 - Recording: silent (key hold is feedback)
 - Transcription: silent if <3s, "Transcribing..." if ≥3s
-- Errors: immediate notification (ADR-004)
+- Errors: immediate notification ([[004-error-handling-and-logging|ADR-004]])
 - Concurrent: "Transcription in progress" notification
 
 ### Text Injection Policy
 Keystroke simulation only (ydotool/cliclick); no clipboard-based fallback
 
 ### Validation
-Startup checks mic device exists (ADR-004)
+Startup checks mic device exists ([[004-error-handling-and-logging|ADR-004]])
 
 ### Concurrency
 Single transcription, states: idle/recording/transcribing
@@ -142,7 +146,7 @@ Block new requests if not idle
 - Complex platform-specific FFI
 - Weeks of development time
 - Ongoing maintenance burden
-- Violates ADR-002 principle of avoiding FFI complexity
+- Violates [[002-technology-stack-selection|ADR-002]] principle of avoiding FFI complexity
 
 #### Option C: AppleScript polling
 **Pros:**
@@ -280,7 +284,7 @@ Block new requests if not idle
 - Simple, direct control
 - Audio tools handle SIGTERM gracefully
 - Real-time responsiveness
-- Aligns with subprocess approach from ADR-002
+- Aligns with subprocess approach from [[002-technology-stack-selection|ADR-002]]
 
 **Cons:**
 - None significant
@@ -423,7 +427,7 @@ Block new requests if not idle
 
 #### Option A: Startup only (Selected)
 **Pros:**
-- Per ADR-004 startup validation philosophy
+- Per [[004-error-handling-and-logging|ADR-004]] startup validation philosophy
 - Fast recording start (no repeated checks)
 - Device changes rare for personal use
 
@@ -454,7 +458,7 @@ Block new requests if not idle
 - Clear feedback
 - Simple state management
 - Predictable behavior
-- Per ADR-005 concurrent handling
+- Per [[005-local-whisper-model-integration|ADR-005]] concurrent handling
 
 **Cons:**
 - User sees notification if they accidentally press
